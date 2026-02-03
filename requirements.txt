@@ -1,0 +1,8 @@
+streamlit
+langchain
+langchain-openai
+openai
+pypdf
+python-docx
+markdown
+reportlab
