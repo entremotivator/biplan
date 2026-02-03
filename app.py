@@ -1,9 +1,9 @@
-# streamlit_app.py
-
+import os
 import streamlit as st
+
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from langchain.llms import OpenAI
+from langchain_openai import OpenAI  # <-- updated import
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Business Plan Generator", page_icon="💼")
@@ -28,6 +28,9 @@ if st.button("Generate Business Plan"):
     elif not business_name or not industry or not key_points:
         st.warning("Please fill in all fields!")
     else:
+        # Set env var so the OpenAI wrapper can read it (optional but common)
+        os.environ["OPENAI_API_KEY"] = api_key
+
         # --- LangChain Prompt ---
         prompt = PromptTemplate(
             template=(
@@ -37,19 +40,22 @@ if st.button("Generate Business Plan"):
                 "Include the following key points: {key_points}. "
                 "Make it clear, structured, and professional."
             ),
-            input_variables=["business_name", "industry", "key_points"]
+            input_variables=["business_name", "industry", "key_points"],
         )
 
         # --- LLM ---
-        llm = OpenAI(temperature=temperature, openai_api_key=api_key)
+        llm = OpenAI(
+            temperature=temperature,
+            # model="gpt-3.5-turbo-instruct",  # optionally specify model
+            openai_api_key=api_key,  # still supported
+        )
         chain = LLMChain(llm=llm, prompt=prompt)
 
         # --- Generate Plan ---
-        # IMPORTANT: pass each variable as a keyword argument
         plan = chain.run(
             business_name=business_name,
             industry=industry,
-            key_points=key_points
+            key_points=key_points,
         )
 
         # Display result
