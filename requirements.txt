@@ -6,3 +6,5 @@ pypdf
 python-docx
 markdown
 reportlab
+langchain-core 
+beautifulsoup4
