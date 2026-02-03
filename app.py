@@ -1,78 +1,55 @@
+# streamlit_app.py
+
 import streamlit as st
-import tempfile
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.document_loaders import PyPDFLoader, TextLoader
-from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from langchain.llms import OpenAI
 
-st.set_page_config(page_title="Chat With File", layout="wide")
-st.title("📄 Chat with your file")
+# --- Streamlit UI ---
+st.set_page_config(page_title="Business Plan Generator", page_icon="💼")
 
-# --- API key input (frontend-style) ---
-api_key = st.text_input(
-    "Enter your OpenAI API key",
-    type="password"
-)
+st.title("💼 One-Page Business Plan Generator")
+st.write("Generate a concise business plan using AI!")
 
-if api_key:
-    st.session_state["api_key"] = api_key
+# Sidebar for API key
+st.sidebar.header("API Settings")
+api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
 
-# --- File upload ---
-uploaded_file = st.file_uploader(
-    "Upload a PDF or TXT file",
-    type=["pdf", "txt"]
-)
+# User inputs
+business_name = st.text_input("Business Name")
+industry = st.text_input("Industry")
+key_points = st.text_area("Key Points / Ideas (comma separated)")
 
-if "qa_chain" not in st.session_state:
-    st.session_state["qa_chain"] = None
+temperature = st.slider("Creativity (Temperature)", 0.0, 1.0, 0.7)
 
-if uploaded_file and "api_key" in st.session_state:
-    with st.spinner("Processing file..."):
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
-            tmp.write(uploaded_file.read())
-            file_path = tmp.name
-
-        if uploaded_file.name.endswith(".pdf"):
-            loader = PyPDFLoader(file_path)
-        else:
-            loader = TextLoader(file_path)
-
-        docs = loader.load()
-
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        chunks = splitter.split_documents(docs)
-
-        embeddings = OpenAIEmbeddings(
-            openai_api_key=st.session_state["api_key"]
+# Generate button
+if st.button("Generate Business Plan"):
+    if not api_key:
+        st.warning("Please enter your OpenAI API key in the sidebar!")
+    elif not business_name or not industry or not key_points:
+        st.warning("Please fill in all fields!")
+    else:
+        # --- LangChain Setup ---
+        prompt = PromptTemplate(
+            input_variables=["business_name", "industry", "key_points"],
+            template=(
+                "You are a professional business consultant. "
+                "Create a one-page business plan for the company '{business_name}' in the '{industry}' industry. "
+                "Include the following key points: {key_points}. "
+                "Make it clear, concise, and professional."
+            )
         )
 
-        vectorstore = FAISS.from_documents(chunks, embeddings)
+        llm = OpenAI(temperature=temperature, openai_api_key=api_key)
+        chain = LLMChain(llm=llm, prompt=prompt)
 
-        llm = ChatOpenAI(
-            temperature=0,
-            openai_api_key=st.session_state["api_key"]
+        # Run chain
+        plan = chain.run(
+            business_name=business_name,
+            industry=industry,
+            key_points=key_points
         )
 
-        st.session_state["qa_chain"] = RetrievalQA.from_chain_type(
-            llm=llm,
-            retriever=vectorstore.as_retriever()
-        )
-
-    st.success("File ready! Ask a question 👇")
-
-# --- Chat ---
-if st.session_state["qa_chain"]:
-    query = st.text_input("Your question")
-
-    if query:
-        with st.spinner("Thinking..."):
-            response = st.session_state["qa_chain"].run(query)
-        st.write("### Answer")
-        st.write(response)
-
-elif uploaded_file and not api_key:
-    st.warning("Please enter your API key first 🔑")
+        # Show result
+        st.subheader("📄 Your One-Page Business Plan")
+        st.write(plan)
