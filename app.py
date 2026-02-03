@@ -1,9 +1,11 @@
 import os
 import streamlit as st
 
-from langchain.prompts import PromptTemplate
+# ✅ Newer import style for PromptTemplate
+from langchain import PromptTemplate  # works across recent versions[web:7]
+
 from langchain.chains import LLMChain
-from langchain_openai import OpenAI  # <-- updated import
+from langchain_openai import OpenAI  # modern OpenAI wrapper[web:2]
 
 # --- Streamlit UI ---
 st.set_page_config(page_title="Business Plan Generator", page_icon="💼")
@@ -28,7 +30,7 @@ if st.button("Generate Business Plan"):
     elif not business_name or not industry or not key_points:
         st.warning("Please fill in all fields!")
     else:
-        # Set env var so the OpenAI wrapper can read it (optional but common)
+        # Optional: set env var (some setups rely on this)
         os.environ["OPENAI_API_KEY"] = api_key
 
         # --- LangChain Prompt ---
@@ -46,8 +48,8 @@ if st.button("Generate Business Plan"):
         # --- LLM ---
         llm = OpenAI(
             temperature=temperature,
-            # model="gpt-3.5-turbo-instruct",  # optionally specify model
-            openai_api_key=api_key,  # still supported
+            # model="gpt-3.5-turbo-instruct",  # or any instruct model you prefer
+            api_key=api_key,
         )
         chain = LLMChain(llm=llm, prompt=prompt)
 
