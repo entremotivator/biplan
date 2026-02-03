@@ -6,10 +6,10 @@ from langchain_openai import OpenAI
 # --- Streamlit UI ---
 st.set_page_config(page_title="Business Plan Generator", page_icon="💼")
 
-st.title("💼 One-Page Business Plan Generator")
+st.title("💼 10‑Page Business Plan Generator")
 st.write(
-    "Generate a detailed, investor-ready one-page business plan, including "
-    "mission, market, offer, monetization, and execution roadmap."
+    "Generate a detailed, multi‑section business plan (approximately ten pages of content) "
+    "covering strategy, market, operations, and financial projections."
 )
 
 # Sidebar for API key and advanced settings
@@ -25,12 +25,10 @@ tone = st.sidebar.selectbox(
 )
 detail_level = st.sidebar.selectbox(
     "Detail level",
-    ["Concise", "Standard", "In-depth"],
-    index=1,
+    ["High-level", "Detailed", "Very detailed (10 pages)"],
+    index=2,
 )
 
-# Main inputs
-st.subheader("Business Information")
 business_name = st.text_input("Business Name", placeholder="e.g., Skyline Analytics")
 industry = st.text_input("Industry", placeholder="e.g., Real Estate Analytics SaaS")
 
@@ -47,37 +45,44 @@ key_points = st.text_area(
     "Additional Key Points / Ideas (comma separated)",
     placeholder="e.g., subscription model, mobile-first, US market, integrate with CRM",
 )
-
 primary_goal = st.text_input(
     "Primary Goal for This Plan",
-    placeholder="e.g., Pitch to investors, clarify strategy, plan MVP launch",
+    placeholder="e.g., Pitch to investors, internal roadmap, bank loan application",
 )
 
-# Map detail level to explicit guidance for the model
-detail_instructions = {
-    "Concise": "Keep each section to 1–2 short paragraphs with bullet points where helpful.",
-    "Standard": "Provide 1–3 paragraphs per section with bullets for clarity.",
-    "In-depth": "Elaborate each section in multiple paragraphs and bullet lists with specific, concrete details.",
-}
-selected_detail_instruction = detail_instructions[detail_level]
+# Map detail level to explicit guidance
+if detail_level == "High-level":
+    detail_instruction = (
+        "Write a concise plan with 1–2 paragraphs per section and minimal bullets."
+    )
+elif detail_level == "Detailed":
+    detail_instruction = (
+        "Write a detailed plan with 2–4 paragraphs per section plus bullet lists. "
+        "Aim for the equivalent of 4–6 pages of text."
+    )
+else:
+    # Very detailed (10 pages)
+    detail_instruction = (
+        "Write a very detailed, investor‑grade business plan with multiple paragraphs "
+        "and bullet lists in every section. Include concrete examples, assumptions, and "
+        "numbers where reasonable. Aim for the equivalent of at least ten pages of text."
+    )
 
-# Generate button
 if st.button("Generate Business Plan"):
     if not api_key:
         st.warning("Please enter your OpenAI API key in the sidebar!")
     elif not business_name or not industry or not value_prop:
         st.warning("Please at least fill in Business Name, Industry, and Key Value Proposition.")
     else:
-        # Optional: set env var
         os.environ["OPENAI_API_KEY"] = api_key
 
-        # --- Prompt template ---
+        # --- Prompt template: ask for a 10-page style plan ---
         prompt = PromptTemplate(
             template=(
-                "You are a seasoned startup and business consultant with experience "
-                "writing investor-ready one-page business plans.\n\n"
-                "Write a ONE-PAGE business plan for the company '{business_name}' "
-                "operating in the '{industry}' industry.\n\n"
+                "You are a seasoned startup and business consultant who writes detailed, "
+                "investor‑ready multi‑page business plans.\n\n"
+                "Write a COMPREHENSIVE BUSINESS PLAN (approximately ten pages of content) "
+                "for the company '{business_name}' operating in the '{industry}' industry.\n\n"
                 "Context and inputs:\n"
                 "- Target customer: {target_customer}\n"
                 "- Core value proposition: {value_prop}\n"
@@ -85,23 +90,27 @@ if st.button("Generate Business Plan"):
                 "- Primary goal for this plan: {primary_goal}\n"
                 "- Desired tone: {tone}\n"
                 "- Detail level instructions: {detail_instruction}\n\n"
-                "Structure the plan with clear markdown section headings using '##' for each major section.\n"
-                "Include at least the following sections:\n"
-                "1. Overview & Mission\n"
-                "2. Problem & Opportunity\n"
-                "3. Solution & Product/Service\n"
-                "4. Target Market & Customers\n"
-                "5. Business Model & Pricing\n"
-                "6. Go-To-Market Strategy\n"
-                "7. Competitive Advantage\n"
-                "8. Operations & Key Resources\n"
-                "9. KPIs & Milestones (next 6–12 months)\n"
-                "10. Risks & Mitigation\n\n"
+                "Structure the plan using clear markdown headings. At minimum, include:\n"
+                "1. Executive Summary\n"
+                "2. Company Overview & Mission\n"
+                "3. Market Analysis\n"
+                "4. Customer Segments & Personas\n"
+                "5. Problem Statement & Opportunity\n"
+                "6. Solution & Product/Service Description\n"
+                "7. Business Model & Revenue Streams\n"
+                "8. Go-To-Market & Sales Strategy\n"
+                "9. Marketing Strategy & Channels\n"
+                "10. Competitive Landscape & Differentiation\n"
+                "11. Operations Plan (team, processes, tech stack, partners)\n"
+                "12. Product Roadmap & Innovation\n"
+                "13. Financial Overview (assumptions, revenue drivers, cost structure, break‑even narrative)\n"
+                "14. KPIs, Milestones & Timeline (next 12–24 months)\n"
+                "15. Risks, Dependencies & Mitigation\n\n"
                 "Requirements:\n"
-                "- Write in a persuasive but realistic tone aligned with the requested tone.\n"
-                "- Be concrete and specific, not generic.\n"
-                "- Use bullet points where it improves clarity.\n"
-                "- Keep it to the equivalent of roughly one page of text.\n"
+                "- Use descriptive headings and subheadings suitable for a 10‑page written plan.\n"
+                "- Provide multiple paragraphs and bullet lists per major section.\n"
+                "- Use concrete examples and realistic assumptions where appropriate.\n"
+                "- Keep the tone aligned with the specified tone while remaining clear and structured.\n"
             ),
             input_variables=[
                 "business_name",
@@ -115,15 +124,12 @@ if st.button("Generate Business Plan"):
             ],
         )
 
-        # --- LLM ---
         llm = OpenAI(
             temperature=temperature,
             api_key=api_key,
-            # You can set a specific model here if needed, e.g.:
-            # model="gpt-4.1-mini",
+            # model="gpt-4.1-mini",  # or your preferred model
         )
 
-        # Format prompt and call model directly
         formatted_prompt = prompt.format(
             business_name=business_name,
             industry=industry,
@@ -132,17 +138,15 @@ if st.button("Generate Business Plan"):
             key_points=key_points or "No extra points provided",
             primary_goal=primary_goal or "Not clearly specified",
             tone=tone,
-            detail_instruction=selected_detail_instruction,
+            detail_instruction=detail_instruction,
         )
 
-        with st.spinner("Generating your one-page business plan..."):
+        with st.spinner("Generating your extended 10‑page business plan..."):
             plan = llm.invoke(formatted_prompt)
 
-        # Display result
-        st.subheader("📄 Your One-Page Business Plan")
+        st.subheader("📄 Your Extended Business Plan (~10 pages)")
         st.markdown(plan)
         st.caption(
-            "Tip: You can copy this into Notion/Google Docs and iterate on the numbers, "
-            "timelines, and KPIs to match your real-world assumptions."
+            "Tip: Paste this into your doc editor, refine the numbers and timelines, "
+            "and add charts/tables for financials as needed."
         )
-
