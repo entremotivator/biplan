@@ -2,7 +2,7 @@ import streamlit as st
 import os
 
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
 from pypdf import PdfReader
@@ -144,6 +144,52 @@ def generate_pdf_from_markdown(md_text, filename="business_plan.pdf"):
         return None
 
 
+def generate_business_plan(business_description, llm):
+    """Generate business plan using the LLM"""
+    prompt_template = """You are a senior business strategist and consultant with expertise in creating comprehensive business plans.
+
+Using the business description below, generate a **professional business plan in Markdown format**.
+
+Include the following sections with detailed, actionable content:
+
+# Executive Summary
+# Company Overview
+# Market Analysis
+# Products & Services
+# Business Model
+# Go-To-Market Strategy
+# Competitive Advantage
+# Operations Plan
+# Financial Projections (3-Year)
+# Risks & Mitigation
+# Conclusion
+
+Business Description:
+{description}
+
+Write clearly, concisely, and professionally. Use bullet points where appropriate for readability.
+Provide specific, actionable insights based on the business description provided.
+Make sure to use only standard ASCII characters in your output.
+"""
+    
+    prompt = PromptTemplate(
+        input_variables=["description"],
+        template=prompt_template
+    )
+    
+    # Format the prompt with the description
+    formatted_prompt = prompt.format(description=business_description)
+    
+    # Use invoke method for newer LangChain versions
+    response = llm.invoke(formatted_prompt)
+    
+    # Extract content from response
+    if hasattr(response, 'content'):
+        return response.content
+    else:
+        return str(response)
+
+
 # -----------------------------
 # Streamlit UI
 # -----------------------------
@@ -204,6 +250,7 @@ with st.sidebar:
 streamlit
 langchain
 langchain-openai
+langchain-core
 openai
 pypdf
 python-docx
@@ -273,41 +320,10 @@ if generate_btn:
             openai_api_key=openai_api_key
         )
 
-        prompt = PromptTemplate(
-            input_variables=["description"],
-            template="""You are a senior business strategist and consultant with expertise in creating comprehensive business plans.
-
-Using the business description below, generate a **professional business plan in Markdown format**.
-
-Include the following sections with detailed, actionable content:
-
-# Executive Summary
-# Company Overview
-# Market Analysis
-# Products & Services
-# Business Model
-# Go-To-Market Strategy
-# Competitive Advantage
-# Operations Plan
-# Financial Projections (3-Year)
-# Risks & Mitigation
-# Conclusion
-
-Business Description:
-{description}
-
-Write clearly, concisely, and professionally. Use bullet points where appropriate for readability.
-Provide specific, actionable insights based on the business description provided.
-Make sure to use only standard ASCII characters in your output.
-"""
-        )
-
-        chain = LLMChain(llm=llm, prompt=prompt)
-
         status_text.text("🤖 Generating business plan with AI...")
         progress_bar.progress(60)
         
-        business_plan_md = chain.run(description=business_description)
+        business_plan_md = generate_business_plan(business_description, llm)
 
         progress_bar.progress(80)
         status_text.text("✅ Business plan generated!")
