@@ -1,200 +1,23 @@
 import streamlit as st
-import os
-
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
-from langchain.chains import LLMChain
-
-from pypdf import PdfReader
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema import HumanMessage, SystemMessage
+import os
+from pathlib import Path
+import PyPDF2
 from docx import Document
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT
-from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
 import markdown
-from bs4 import BeautifulSoup
-import re
+from datetime import datetime
 
-
-# -----------------------------
-# Helper functions
-# -----------------------------
-def read_uploaded_file(uploaded_file):
-    """Extract text from uploaded files (PDF, TXT, DOCX)"""
-    try:
-        if uploaded_file.type == "application/pdf":
-            reader = PdfReader(uploaded_file)
-            text = ""
-            for page in reader.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-            return text
-
-        elif uploaded_file.type == "text/plain":
-            return uploaded_file.read().decode("utf-8")
-
-        elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            doc = Document(uploaded_file)
-            return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-
-        else:
-            return ""
-    except Exception as e:
-        st.error(f"Error reading file: {str(e)}")
-        return ""
-
-
-def clean_text_for_pdf(text):
-    """Clean text to be PDF-compatible"""
-    # Remove or replace problematic characters
-    text = text.replace('\u2019', "'")  # smart quote
-    text = text.replace('\u2018', "'")  # smart quote
-    text = text.replace('\u201c', '"')  # smart quote
-    text = text.replace('\u201d', '"')  # smart quote
-    text = text.replace('\u2013', '-')  # en dash
-    text = text.replace('\u2014', '--')  # em dash
-    text = text.replace('\u2022', '*')  # bullet
-    # Remove any other non-ASCII characters
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    return text
-
-
-def generate_pdf_from_markdown(md_text, filename="business_plan.pdf"):
-    """Convert Markdown to PDF with better formatting"""
-    try:
-        # Clean the markdown text
-        md_text = clean_text_for_pdf(md_text)
-        
-        # Convert markdown to HTML
-        html_text = markdown.markdown(md_text)
-        soup = BeautifulSoup(html_text, 'html.parser')
-        
-        # Setup PDF
-        styles = getSampleStyleSheet()
-        
-        # Create custom styles
-        title_style = ParagraphStyle(
-            name='CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=18,
-            textColor='darkblue',
-            spaceAfter=12,
-            spaceBefore=12,
-            alignment=TA_LEFT,
-            fontName='Helvetica-Bold'
-        )
-        
-        heading_style = ParagraphStyle(
-            name='CustomHeading',
-            parent=styles['Heading2'],
-            fontSize=14,
-            textColor='navy',
-            spaceAfter=10,
-            spaceBefore=12,
-            fontName='Helvetica-Bold'
-        )
-        
-        normal_style = ParagraphStyle(
-            name='CustomNormal',
-            parent=styles['Normal'],
-            fontSize=11,
-            spaceAfter=6,
-            alignment=TA_LEFT
-        )
-        
-        story = []
-        
-        # Parse HTML and convert to PDF elements
-        for element in soup.find_all(['h1', 'h2', 'h3', 'p', 'ul', 'ol', 'li']):
-            text = element.get_text().strip()
-            if not text:
-                continue
-                
-            if element.name == 'h1':
-                story.append(Paragraph(text, title_style))
-                story.append(Spacer(1, 0.2*inch))
-            elif element.name == 'h2':
-                story.append(Paragraph(text, heading_style))
-                story.append(Spacer(1, 0.15*inch))
-            elif element.name == 'h3':
-                story.append(Paragraph(text, styles['Heading3']))
-                story.append(Spacer(1, 0.1*inch))
-            elif element.name in ['p', 'li']:
-                # Add bullet for list items
-                if element.name == 'li':
-                    text = f"• {text}"
-                story.append(Paragraph(text, normal_style))
-        
-        # Build PDF
-        pdf = SimpleDocTemplate(
-            filename,
-            pagesize=letter,
-            rightMargin=72,
-            leftMargin=72,
-            topMargin=72,
-            bottomMargin=18
-        )
-        pdf.build(story)
-        
-        return filename
-    except Exception as e:
-        st.error(f"Error generating PDF: {str(e)}")
-        return None
-
-
-def generate_business_plan(business_description, llm):
-    """Generate business plan using the LLM"""
-    prompt_template = """You are a senior business strategist and consultant with expertise in creating comprehensive business plans.
-
-Using the business description below, generate a **professional business plan in Markdown format**.
-
-Include the following sections with detailed, actionable content:
-
-# Executive Summary
-# Company Overview
-# Market Analysis
-# Products & Services
-# Business Model
-# Go-To-Market Strategy
-# Competitive Advantage
-# Operations Plan
-# Financial Projections (3-Year)
-# Risks & Mitigation
-# Conclusion
-
-Business Description:
-{description}
-
-Write clearly, concisely, and professionally. Use bullet points where appropriate for readability.
-Provide specific, actionable insights based on the business description provided.
-Make sure to use only standard ASCII characters in your output.
-"""
-    
-    prompt = PromptTemplate(
-        input_variables=["description"],
-        template=prompt_template
-    )
-    
-    # Format the prompt with the description
-    formatted_prompt = prompt.format(description=business_description)
-    
-    # Use invoke method for newer LangChain versions
-    response = llm.invoke(formatted_prompt)
-    
-    # Extract content from response
-    if hasattr(response, 'content'):
-        return response.content
-    else:
-        return str(response)
-
-
-# -----------------------------
-# Streamlit UI
-# -----------------------------
+# Page configuration
 st.set_page_config(
-    page_title="AI Business Plan Generator",
+    page_title="Business Plan Generator",
     page_icon="📊",
     layout="wide"
 )
@@ -207,221 +30,428 @@ st.markdown("""
     }
     .stButton>button {
         width: 100%;
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+    }
+    .success-message {
+        padding: 1rem;
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        border-radius: 5px;
+        color: #155724;
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 AI Business Plan Generator")
-st.caption("Upload a business description → Get a full business plan (Markdown + PDF)")
+def extract_text_from_file(uploaded_file):
+    """Extract text from uploaded document (PDF, DOCX, or TXT)"""
+    file_extension = uploaded_file.name.split('.')[-1].lower()
+    
+    if file_extension == 'pdf':
+        pdf_reader = PyPDF2.PdfReader(uploaded_file)
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text
+    
+    elif file_extension == 'docx':
+        doc = Document(uploaded_file)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        return text
+    
+    elif file_extension == 'txt':
+        return uploaded_file.read().decode('utf-8')
+    
+    else:
+        st.error("Unsupported file format. Please upload PDF, DOCX, or TXT files.")
+        return None
 
-# Sidebar – API Key
-with st.sidebar:
-    st.header("🔑 OpenAI Settings")
-    openai_api_key = st.text_input(
-        "OpenAI API Key",
-        type="password",
-        help="Enter your OpenAI API key. Get one at https://platform.openai.com/api-keys"
+def generate_business_plan(business_description, api_key, model_name):
+    """Generate comprehensive business plan using LangChain and OpenAI"""
+    
+    os.environ["OPENAI_API_KEY"] = api_key
+    
+    # Initialize the LLM with the latest model
+    llm = ChatOpenAI(
+        model=model_name,
+        temperature=0.7,
+        max_tokens=4000
     )
     
-    st.markdown("---")
-    st.markdown("**Model Options:**")
-    model_choice = st.selectbox(
-        "Select Model",
-        ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-        index=0,
-        help="GPT-4o recommended for best results"
+    # Create a comprehensive prompt template
+    prompt_template = ChatPromptTemplate.from_messages([
+        SystemMessage(content="""You are an expert business consultant and strategist with decades of experience in creating comprehensive business plans. 
+        Your task is to generate a detailed, professional business plan in Markdown format that includes all standard sections.
+        The business plan should be thorough, actionable, and investor-ready."""),
+        HumanMessage(content="""Based on the following business description, create a comprehensive business plan in Markdown format.
+
+Business Description:
+{business_description}
+
+Generate a complete business plan with the following sections (use Markdown headers and formatting):
+
+# Executive Summary
+Provide a compelling overview of the business, its mission, and key highlights.
+
+# Company Overview
+## Mission Statement
+## Vision Statement
+## Company Values
+## Legal Structure
+## Location and Facilities
+
+# Products and Services
+Describe in detail what the business offers, including features, benefits, and unique selling propositions.
+
+# Market Analysis
+## Industry Overview
+## Target Market
+## Market Size and Growth Potential
+## Customer Segments
+## Market Trends
+
+# Competitive Analysis
+## Direct Competitors
+## Indirect Competitors
+## Competitive Advantages
+## SWOT Analysis
+### Strengths
+### Weaknesses
+### Opportunities
+### Threats
+
+# Marketing and Sales Strategy
+## Marketing Channels
+## Pricing Strategy
+## Sales Process
+## Customer Acquisition Strategy
+## Brand Positioning
+
+# Operations Plan
+## Production/Service Delivery
+## Technology and Equipment
+## Suppliers and Partners
+## Quality Control
+
+# Management and Organization
+## Organizational Structure
+## Key Personnel
+## Advisory Board
+## Hiring Plan
+
+# Financial Projections
+## Revenue Model
+## Startup Costs
+## 3-Year Financial Forecast
+### Year 1 Projections
+### Year 2 Projections
+### Year 3 Projections
+## Break-even Analysis
+## Funding Requirements
+
+# Milestones and Metrics
+## Key Milestones
+## Success Metrics
+## Timeline
+
+# Risk Analysis and Mitigation
+## Potential Risks
+## Mitigation Strategies
+
+# Appendix
+## Supporting Documents
+## Additional Data
+
+Make the plan specific, detailed, and professional. Use realistic estimates and industry-standard practices.""")
+    ])
+    
+    # Generate the business plan
+    with st.spinner("🤖 AI is generating your comprehensive business plan... This may take a moment."):
+        chain = prompt_template | llm
+        response = chain.invoke({"business_description": business_description})
+        business_plan_md = response.content
+    
+    return business_plan_md
+
+def markdown_to_pdf(markdown_text, output_path):
+    """Convert Markdown business plan to PDF using ReportLab"""
+    
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=letter,
+        rightMargin=72,
+        leftMargin=72,
+        topMargin=72,
+        bottomMargin=72
     )
     
-    temperature = st.slider(
-        "Temperature",
-        min_value=0.0,
-        max_value=1.0,
-        value=0.3,
-        step=0.1,
-        help="Lower = more focused, Higher = more creative"
+    # Container for the 'Flowable' objects
+    story = []
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    # Custom styles
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Title'],
+        fontSize=24,
+        textColor=colors.HexColor('#1f4788'),
+        spaceAfter=30,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
     )
     
-    st.markdown("---")
-    st.info("💡 **Tip:** Lower temperature = more focused output")
-    
-    st.markdown("---")
-    st.markdown("### 📚 Requirements")
-    st.code("""
-streamlit
-langchain
-langchain-openai
-langchain-core
-openai
-pypdf
-python-docx
-markdown
-reportlab
-beautifulsoup4
-    """)
-
-
-# Main area
-col1, col2 = st.columns([2, 1])
-
-with col1:
-    uploaded_file = st.file_uploader(
-        "Upload your business description (PDF, TXT, or DOCX)",
-        type=["pdf", "txt", "docx"],
-        help="Upload a document containing your business idea or description"
+    heading1_style = ParagraphStyle(
+        'CustomHeading1',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1f4788'),
+        spaceAfter=12,
+        spaceBefore=12,
+        fontName='Helvetica-Bold'
     )
+    
+    heading2_style = ParagraphStyle(
+        'CustomHeading2',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#2e5090'),
+        spaceAfter=10,
+        spaceBefore=10,
+        fontName='Helvetica-Bold'
+    )
+    
+    heading3_style = ParagraphStyle(
+        'CustomHeading3',
+        parent=styles['Heading3'],
+        fontSize=12,
+        textColor=colors.HexColor('#4a628a'),
+        spaceAfter=8,
+        spaceBefore=8,
+        fontName='Helvetica-Bold'
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['Normal'],
+        fontSize=11,
+        alignment=TA_JUSTIFY,
+        spaceAfter=12,
+        leading=14
+    )
+    
+    bullet_style = ParagraphStyle(
+        'CustomBullet',
+        parent=styles['Normal'],
+        fontSize=11,
+        leftIndent=20,
+        spaceAfter=6,
+        leading=14
+    )
+    
+    # Add title page
+    story.append(Spacer(1, 2*inch))
+    story.append(Paragraph("BUSINESS PLAN", title_style))
+    story.append(Spacer(1, 0.3*inch))
+    story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y')}", styles['Normal']))
+    story.append(PageBreak())
+    
+    # Process markdown content
+    lines = markdown_text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        if not line:
+            story.append(Spacer(1, 12))
+            continue
+        
+        # Handle headers
+        if line.startswith('# '):
+            text = line[2:].strip()
+            story.append(Paragraph(text, heading1_style))
+        elif line.startswith('## '):
+            text = line[3:].strip()
+            story.append(Paragraph(text, heading2_style))
+        elif line.startswith('### '):
+            text = line[4:].strip()
+            story.append(Paragraph(text, heading3_style))
+        elif line.startswith('#### '):
+            text = line[5:].strip()
+            story.append(Paragraph(text, heading3_style))
+        
+        # Handle bullet points
+        elif line.startswith('- ') or line.startswith('* '):
+            text = '• ' + line[2:].strip()
+            story.append(Paragraph(text, bullet_style))
+        
+        # Handle numbered lists
+        elif len(line) > 2 and line[0].isdigit() and line[1:3] in ['. ', ') ']:
+            story.append(Paragraph(line, bullet_style))
+        
+        # Handle bold text
+        elif '**' in line:
+            text = line.replace('**', '<b>').replace('**', '</b>')
+            story.append(Paragraph(text, body_style))
+        
+        # Regular paragraph
+        else:
+            story.append(Paragraph(line, body_style))
+    
+    # Build PDF
+    doc.build(story)
 
-with col2:
-    st.markdown("##### Supported formats:")
-    st.markdown("- 📄 PDF (.pdf)")
-    st.markdown("- 📝 Text (.txt)")
-    st.markdown("- 📘 Word (.docx)")
-
-generate_btn = st.button("🚀 Generate Business Plan", type="primary", use_container_width=True)
-
-
-# -----------------------------
-# Main Logic
-# -----------------------------
-if generate_btn:
-    if not openai_api_key:
-        st.error("⚠️ Please enter your OpenAI API key in the sidebar.")
-        st.stop()
-
-    if not uploaded_file:
-        st.error("⚠️ Please upload a business description file.")
-        st.stop()
-
-    # Progress tracking
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-
-    # Read file
-    status_text.text("📖 Reading document...")
-    progress_bar.progress(20)
-    business_description = read_uploaded_file(uploaded_file)
-
-    if not business_description.strip():
-        st.error("⚠️ Uploaded file appears to be empty.")
-        st.stop()
-
-    # Display preview of uploaded content
-    with st.expander("📄 View Uploaded Business Description"):
-        st.text_area("Content Preview", business_description[:1000] + "..." if len(business_description) > 1000 else business_description, height=200, disabled=True)
-        st.caption(f"Total characters: {len(business_description)}")
-
-    progress_bar.progress(40)
-
-    # Initialize LLM
-    try:
-        status_text.text("🔧 Initializing AI model...")
-        llm = ChatOpenAI(
-            model=model_choice,
-            temperature=temperature,
-            openai_api_key=openai_api_key
+def main():
+    # Sidebar for API configuration
+    with st.sidebar:
+        st.title("⚙️ Configuration")
+        st.markdown("---")
+        
+        # API Key input
+        api_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Enter your OpenAI API key. Get one at https://platform.openai.com/api-keys"
         )
-
-        status_text.text("🤖 Generating business plan with AI...")
-        progress_bar.progress(60)
         
-        business_plan_md = generate_business_plan(business_description, llm)
-
-        progress_bar.progress(80)
-        status_text.text("✅ Business plan generated!")
-
-        # Display success message
-        st.success("✅ Business plan generated successfully!")
+        # Model selection
+        model_options = {
+            "GPT-4 Turbo": "gpt-4-turbo-preview",
+            "GPT-4": "gpt-4",
+            "GPT-4o": "gpt-4o",
+            "GPT-4o Mini": "gpt-4o-mini",
+            "GPT-3.5 Turbo": "gpt-3.5-turbo"
+        }
         
-        # Display Markdown
+        selected_model = st.selectbox(
+            "Select Model",
+            options=list(model_options.keys()),
+            index=2,  # Default to GPT-4o
+            help="Choose the OpenAI model to use for generation"
+        )
+        
+        model_name = model_options[selected_model]
+        
         st.markdown("---")
-        st.subheader("📄 Generated Business Plan")
+        st.markdown("### About")
+        st.info(
+            "This app uses LangChain and OpenAI's latest models to generate "
+            "comprehensive business plans from your business description."
+        )
         
-        # Tabs for different views
-        tab1, tab2 = st.tabs(["📖 Formatted View", "📝 Raw Markdown"])
-        
-        with tab1:
-            st.markdown(business_plan_md)
-        
-        with tab2:
-            st.code(business_plan_md, language="markdown")
-
-        # Generate PDF
-        status_text.text("📑 Creating PDF...")
-        progress_bar.progress(90)
-        
-        pdf_file = generate_pdf_from_markdown(business_plan_md)
-
-        progress_bar.progress(100)
-        status_text.text("🎉 All done!")
-
-        # Download buttons
-        st.markdown("---")
-        st.subheader("⬇️ Download Options")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.download_button(
-                label="📥 Download Markdown (.md)",
-                data=business_plan_md,
-                file_name="business_plan.md",
-                mime="text/markdown",
-                use_container_width=True
-            )
-        
-        with col2:
-            if pdf_file and os.path.exists(pdf_file):
-                with open(pdf_file, "rb") as f:
-                    pdf_data = f.read()
-                    st.download_button(
-                        label="📥 Download PDF (.pdf)",
-                        data=pdf_data,
-                        file_name="business_plan.pdf",
-                        mime="application/pdf",
-                        use_container_width=True
-                    )
-                # Clean up PDF file
-                try:
-                    os.remove(pdf_file)
-                except:
-                    pass
-            else:
-                st.warning("⚠️ PDF generation failed. Please download the Markdown version.")
-
-        # Clear progress indicators
-        progress_bar.empty()
-        status_text.empty()
-
-    except Exception as e:
-        st.error(f"❌ An error occurred: {str(e)}")
-        st.info("Please check your API key and try again.")
-        
-        # Show detailed error in expander
-        with st.expander("🔍 Error Details"):
-            st.code(str(e))
-
-else:
-    # Show instructions when no generation is in progress
-    st.markdown("---")
-    st.markdown("### 📝 How to use:")
-    st.markdown("""
-    1. Enter your **OpenAI API key** in the sidebar
-    2. **Upload** a business description file (PDF, TXT, or DOCX)
-    3. Click **Generate Business Plan**
-    4. **Download** your professional business plan in Markdown or PDF format
-    """)
+        st.markdown("### Supported File Types")
+        st.markdown("- PDF (.pdf)")
+        st.markdown("- Word (.docx)")
+        st.markdown("- Text (.txt)")
     
+    # Main content
+    st.title("📊 Business Plan Generator")
+    st.markdown(
+        "Upload your business description document and let AI generate a comprehensive, "
+        "professional business plan for you."
+    )
     st.markdown("---")
-    st.markdown("### ✨ Features:")
-    col1, col2, col3 = st.columns(3)
+    
+    # File upload section
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.markdown("**📊 Comprehensive**")
-        st.caption("10 detailed sections covering all aspects of your business")
+        uploaded_file = st.file_uploader(
+            "Upload Business Description",
+            type=['pdf', 'docx', 'txt'],
+            help="Upload a document containing your business description"
+        )
     
     with col2:
-        st.markdown("**🤖 AI-Powered**")
-        st.caption("Powered by GPT-4o for professional-quality output")
+        st.markdown("### Quick Tips")
+        st.markdown("""
+        - Include your business idea
+        - Mention target audience
+        - Describe products/services
+        - Note any unique features
+        """)
     
-    with col3:
-        st.markdown("**📥 Multiple Formats**")
-        st.caption("Download as Markdown or beautifully formatted PDF")
+    # Text area for manual input
+    st.markdown("### Or paste your business description here:")
+    manual_input = st.text_area(
+        "Business Description",
+        height=200,
+        placeholder="Enter your business description here...\n\nExample: We are developing an AI-powered mobile app that helps users track their fitness goals through personalized workout plans and nutrition guidance. Our target market is health-conscious millennials aged 25-40 who want convenient, affordable fitness coaching..."
+    )
+    
+    # Generate button
+    if st.button("🚀 Generate Business Plan", type="primary"):
+        if not api_key:
+            st.error("⚠️ Please enter your OpenAI API key in the sidebar.")
+            return
+        
+        # Get business description from file or manual input
+        business_description = None
+        
+        if uploaded_file:
+            business_description = extract_text_from_file(uploaded_file)
+            if business_description:
+                st.success(f"✅ Successfully extracted text from {uploaded_file.name}")
+        elif manual_input:
+            business_description = manual_input
+        else:
+            st.error("⚠️ Please upload a file or enter a business description.")
+            return
+        
+        if business_description:
+            try:
+                # Generate business plan
+                business_plan_md = generate_business_plan(
+                    business_description,
+                    api_key,
+                    model_name
+                )
+                
+                # Save markdown file
+                md_path = "/home/claude/business_plan.md"
+                with open(md_path, 'w', encoding='utf-8') as f:
+                    f.write(business_plan_md)
+                
+                # Generate PDF
+                pdf_path = "/home/claude/business_plan.pdf"
+                markdown_to_pdf(business_plan_md, pdf_path)
+                
+                # Display success message
+                st.markdown('<div class="success-message">✨ Business plan generated successfully!</div>', unsafe_allow_html=True)
+                st.markdown("---")
+                
+                # Display the business plan
+                st.markdown("## 📄 Generated Business Plan")
+                st.markdown(business_plan_md)
+                
+                st.markdown("---")
+                
+                # Download buttons
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    with open(md_path, 'r', encoding='utf-8') as f:
+                        st.download_button(
+                            label="📥 Download Markdown",
+                            data=f.read(),
+                            file_name="business_plan.md",
+                            mime="text/markdown"
+                        )
+                
+                with col2:
+                    with open(pdf_path, 'rb') as f:
+                        st.download_button(
+                            label="📥 Download PDF",
+                            data=f.read(),
+                            file_name="business_plan.pdf",
+                            mime="application/pdf"
+                        )
+                
+            except Exception as e:
+                st.error(f"❌ An error occurred: {str(e)}")
+                st.exception(e)
+
+if __name__ == "__main__":
+    main()
