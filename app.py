@@ -19,7 +19,6 @@ api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
 business_name = st.text_input("Business Name")
 industry = st.text_input("Industry")
 key_points = st.text_area("Key Points / Ideas (comma separated)")
-
 temperature = st.slider("Creativity (Temperature)", 0.0, 1.0, 0.7)
 
 # Generate button
@@ -29,27 +28,30 @@ if st.button("Generate Business Plan"):
     elif not business_name or not industry or not key_points:
         st.warning("Please fill in all fields!")
     else:
-        # --- LangChain Setup ---
+        # --- LangChain Prompt ---
         prompt = PromptTemplate(
-            input_variables=["business_name", "industry", "key_points"],
             template=(
                 "You are a professional business consultant. "
-                "Create a one-page business plan for the company '{business_name}' in the '{industry}' industry. "
+                "Create a concise one-page business plan for the company '{business_name}' "
+                "in the '{industry}' industry. "
                 "Include the following key points: {key_points}. "
-                "Make it clear, concise, and professional."
-            )
+                "Make it clear, structured, and professional."
+            ),
+            input_variables=["business_name", "industry", "key_points"]
         )
 
+        # --- LLM ---
         llm = OpenAI(temperature=temperature, openai_api_key=api_key)
         chain = LLMChain(llm=llm, prompt=prompt)
 
-        # Run chain
+        # --- Generate Plan ---
+        # IMPORTANT: pass each variable as a keyword argument
         plan = chain.run(
             business_name=business_name,
             industry=industry,
             key_points=key_points
         )
 
-        # Show result
+        # Display result
         st.subheader("📄 Your One-Page Business Plan")
         st.write(plan)
