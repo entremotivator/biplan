@@ -1,16 +1,5 @@
-# Core dependencies
 streamlit
 langchain
-langchain-openai
 langchain-core
+langchain-openai
 openai
-
-# Document processing
-PyPDF2
-python-docx
-
-# PDF generation
-reportlab>=4.0.0
-
-# Utilities
-markdown>=3.5.0
