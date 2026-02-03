@@ -2,7 +2,6 @@ import streamlit as st
 import os
 
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import PromptTemplate
 from langchain.chains import LLMChain
 
 from pypdf import PdfReader
