@@ -1,13 +1,16 @@
 import streamlit as st
 import os
+
 from langchain_openai import ChatOpenAI
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.chains import LLMChain
+
 from pypdf import PdfReader
 from docx import Document
 from reportlab.platypus import SimpleDocTemplate, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 import markdown
+
 
 
 # -----------------------------
